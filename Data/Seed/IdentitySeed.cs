@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Timesheet.Models;
 
 namespace Timesheet.Data.Seed;
@@ -11,6 +12,7 @@ public static class IdentitySeed
         var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
         string[] roles = ["Admin", "Client"];
 
@@ -22,8 +24,13 @@ public static class IdentitySeed
             }
         }
 
-        const string adminEmail = "admin@gmtech.co.za";
-        const string adminPassword = "Admin@123";
+        var adminEmail = configuration["SeedSettings:AdminEmail"] ?? "admin@gmtech.co.za";
+        var adminPassword = configuration["SeedSettings:AdminPassword"];
+
+        if (string.IsNullOrWhiteSpace(adminPassword))
+        {
+            throw new InvalidOperationException("Seed admin password is missing. Configure SeedSettings:AdminPassword.");
+        }
 
         var adminUser = await userManager.FindByEmailAsync(adminEmail);
 
@@ -45,8 +52,13 @@ public static class IdentitySeed
             await userManager.AddToRoleAsync(adminUser, "Admin");
         }
 
-        const string clientEmail = "client@mopani.co.za";
-        const string clientPassword = "Client@123";
+        var clientEmail = configuration["SeedSettings:ClientEmail"] ?? "client@mopani.co.za";
+        var clientPassword = configuration["SeedSettings:ClientPassword"];
+
+        if (string.IsNullOrWhiteSpace(clientPassword))
+        {
+            throw new InvalidOperationException("Seed client password is missing. Configure SeedSettings:ClientPassword.");
+        }
 
         var mopaniClient = await dbContext.Clients
             .FirstOrDefaultAsync(client => client.Name.Contains("Mopani"));
