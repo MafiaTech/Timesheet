@@ -1,0 +1,157 @@
+@page "/client-invoices"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Client")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using Timesheet.Data
+@using Timesheet.Models
+@using Timesheet.Services
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject AppDbContext DbContext
+@inject InvoicePdfService InvoicePdfService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Client Invoices</PageTitle>
+
+<h1>Client Invoices</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-warning">@errorMessage</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            Invoices
+        </div>
+        <div class="card-body">
+            <table class="table table-striped table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>Invoice Number</th>
+                        <th>Invoice Date</th>
+                        <th>Period Start</th>
+                        <th>Period End</th>
+                        <th>Total Hours</th>
+                        <th>Total Amount</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (invoices.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" class="text-muted">No invoices found.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var invoice in invoices)
+                        {
+                            <tr>
+                                <td>@invoice.InvoiceNumber</td>
+                                <td>@invoice.InvoiceDate.ToString("yyyy-MM-dd")</td>
+                                <td>@invoice.PeriodStart.ToString("yyyy-MM-dd")</td>
+                                <td>@invoice.PeriodEnd.ToString("yyyy-MM-dd")</td>
+                                <td>@invoice.TotalHours.ToString("N2")</td>
+                                <td>@invoice.TotalAmount.ToString("C")</td>
+                                <td>@invoice.Status</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ExportInvoicePdfAsync(invoice.Id)">
+                                        Export PDF
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<script>
+    window.downloadFileFromBase64 = (fileName, base64Data, contentType) => {
+        const link = document.createElement('a');
+        link.download = fileName;
+        link.href = `data:${contentType};base64,${base64Data}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+</script>
+
+@code {
+    private List<Invoice> invoices = [];
+    private int? clientId;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authenticationState.User);
+
+        if (user?.ClientId is null)
+        {
+            errorMessage = "Your user account is not linked to a client profile.";
+            return;
+        }
+
+        clientId = user.ClientId.Value;
+
+        invoices = await DbContext.Invoices
+            .AsNoTracking()
+            .Include(invoice => invoice.Client)
+            .Where(invoice => invoice.ClientId == clientId.Value)
+            .OrderByDescending(invoice => invoice.InvoiceDate)
+            .ToListAsync();
+    }
+
+    private async Task ExportInvoicePdfAsync(int invoiceId)
+    {
+        errorMessage = null;
+
+        if (clientId is null)
+        {
+            errorMessage = "Your user account is not linked to a client profile.";
+            return;
+        }
+
+        var invoice = await DbContext.Invoices
+            .AsNoTracking()
+            .Include(invoice => invoice.Client)
+            .FirstOrDefaultAsync(invoice => invoice.Id == invoiceId && invoice.ClientId == clientId.Value);
+
+        if (invoice is null)
+        {
+            errorMessage = "Invoice could not be found.";
+            return;
+        }
+
+        var lineItems = await DbContext.InvoiceLineItems
+            .AsNoTracking()
+            .Where(lineItem => lineItem.InvoiceId == invoice.Id)
+            .OrderBy(lineItem => lineItem.WorkDate)
+            .ThenBy(lineItem => lineItem.Id)
+            .ToListAsync();
+
+        var companyProfile = await DbContext.CompanyProfiles
+            .AsNoTracking()
+            .OrderBy(profile => profile.Id)
+            .FirstOrDefaultAsync();
+
+        var pdfBytes = InvoicePdfService.GenerateInvoicePdf(invoice, lineItems, companyProfile);
+        var base64Pdf = Convert.ToBase64String(pdfBytes);
+        var fileName = $"Invoice-{invoice.InvoiceNumber}.pdf";
+
+        await JSRuntime.InvokeVoidAsync("downloadFileFromBase64", fileName, base64Pdf, "application/pdf");
+    }
+}

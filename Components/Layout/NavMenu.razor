@@ -1,0 +1,59 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="gm-sidebar">
+    <div class="gm-brand-area">
+        <img src="/images/gm-technologies-logo.png"
+             alt="GM Technologies Logo"
+             class="gm-logo"
+             onerror="this.style.display='none'" />
+
+        <div>
+            <div class="gm-app-name">Side Hustle Timesheet</div>
+            <div class="gm-tagline">Track. Approve. Invoice.</div>
+        </div>
+    </div>
+
+    <nav class="gm-menu">
+
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <a href="" class="gm-menu-link">🏠 <span>Home</span></a>
+                <a href="dashboard" class="gm-menu-link">📊 <span>Dashboard</span></a>
+                <a href="clients" class="gm-menu-link">👥 <span>Clients</span></a>
+                <a href="projects" class="gm-menu-link">📁 <span>Projects</span></a>
+                <a href="timesheets" class="gm-menu-link">⏱️ <span>Timesheets</span></a>
+                <a href="invoices" class="gm-menu-link">🧾 <span>Invoices</span></a>
+                <a href="company-profile" class="gm-menu-link">🏢 <span>Company Profile</span></a>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Client">
+            <Authorized>
+                <a href="client-dashboard" class="gm-menu-link">📊 <span>Dashboard</span></a>
+                <a href="client-timesheets" class="gm-menu-link">⏱️ <span>Timesheets</span></a>
+                <a href="client-invoices" class="gm-menu-link">🧾 <span>Invoices</span></a>
+                <a href="client-company-profile" class="gm-menu-link">🏢 <span>Company Profile</span></a>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView>
+            <NotAuthorized>
+                <a href="login" class="gm-menu-link">🔐 <span>Login</span></a>
+            </NotAuthorized>
+
+            <Authorized>
+                <form method="post" action="/auth/logout" class="gm-logout-form">
+                    <button type="submit" class="gm-menu-link gm-logout-button">
+                        🚪 <span>Logout</span>
+                    </button>
+                </form>
+            </Authorized>
+        </AuthorizeView>
+
+    </nav>
+
+    <div class="gm-sidebar-footer">
+        <div>GM Technologies</div>
+        <small>v1.0 MVP</small>
+    </div>
+</div>

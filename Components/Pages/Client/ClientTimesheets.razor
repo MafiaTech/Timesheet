@@ -1,0 +1,99 @@
+@page "/client-timesheets"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Client")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Timesheet.Data
+@using Timesheet.Models
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject AppDbContext DbContext
+
+<PageTitle>Client Timesheets</PageTitle>
+
+<h1>Client Timesheets</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-warning">@errorMessage</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            Timesheet Entries
+        </div>
+        <div class="card-body">
+            <table class="table table-striped table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>Work Date</th>
+                        <th>Project</th>
+                        <th>Workstream</th>
+                        <th>Activity Description</th>
+                        <th>Start Time</th>
+                        <th>End Time</th>
+                        <th>Hours Worked</th>
+                        <th>Billable</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (timesheetEntries.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="10" class="text-muted">No timesheet entries found.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var entry in timesheetEntries)
+                        {
+                            <tr>
+                                <td>@entry.WorkDate.ToString("yyyy-MM-dd")</td>
+                                <td>@entry.Project?.Name</td>
+                                <td>@entry.Workstream</td>
+                                <td>@entry.ActivityDescription</td>
+                                <td>@entry.StartTime.ToString(@"hh\:mm")</td>
+                                <td>@entry.EndTime.ToString(@"hh\:mm")</td>
+                                <td>@entry.HoursWorked.ToString("N2")</td>
+                                <td>@(entry.IsBillable ? "Yes" : "No")</td>
+                                <td>@entry.Amount.ToString("C")</td>
+                                <td>@entry.Status</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TimesheetEntry> timesheetEntries = [];
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authenticationState.User);
+
+        if (user?.ClientId is null)
+        {
+            errorMessage = "Your user account is not linked to a client profile.";
+            return;
+        }
+
+        timesheetEntries = await DbContext.TimesheetEntries
+            .AsNoTracking()
+            .Include(entry => entry.Project)
+            .ThenInclude(project => project.Client)
+            .Where(entry => entry.Project.ClientId == user.ClientId.Value)
+            .OrderByDescending(entry => entry.WorkDate)
+            .ToListAsync();
+    }
+}

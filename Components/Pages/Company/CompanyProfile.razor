@@ -1,0 +1,127 @@
+@page "/company-profile"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+
+@using Microsoft.EntityFrameworkCore
+@using Timesheet.Data
+@using Timesheet.Models
+@using Microsoft.AspNetCore.Authorization
+@inject AppDbContext DbContext
+
+<PageTitle>Company Profile</PageTitle>
+
+<h1>Company Profile</h1>
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<div class="card">
+    <div class="card-header">
+        Company Details
+    </div>
+    <div class="card-body">
+        <form @onsubmit="SaveCompanyProfileAsync" @onsubmit:preventDefault="true">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="company-name">Company Name</label>
+                    <input id="company-name" class="form-control" @bind="companyProfile.CompanyName" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="contact-person">Contact Person</label>
+                    <input id="contact-person" class="form-control" @bind="companyProfile.ContactPerson" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="company-email">Email</label>
+                    <input id="company-email" class="form-control" @bind="companyProfile.Email" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="company-phone">Phone</label>
+                    <input id="company-phone" class="form-control" @bind="companyProfile.Phone" />
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label" for="company-address">Address</label>
+                    <textarea id="company-address" class="form-control" rows="3" @bind="companyProfile.Address"></textarea>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="bank-name">Bank Name</label>
+                    <input id="bank-name" class="form-control" @bind="companyProfile.BankName" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="account-number">Account Number</label>
+                    <input id="account-number" class="form-control" @bind="companyProfile.AccountNumber" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="branch-code">Branch Code</label>
+                    <input id="branch-code" class="form-control" @bind="companyProfile.BranchCode" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="vat-number">VAT Number</label>
+                    <input id="vat-number" class="form-control" @bind="companyProfile.VatNumber" />
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label" for="invoice-footer-message">Invoice Footer Message</label>
+                    <textarea id="invoice-footer-message" class="form-control" rows="3" @bind="companyProfile.InvoiceFooterMessage"></textarea>
+                </div>
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Save Company Profile</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@code {
+    private Timesheet.Models.CompanyProfile companyProfile = new();
+    private bool isNewProfile;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var existingProfile = await DbContext.CompanyProfiles
+            .OrderBy(profile => profile.Id)
+            .FirstOrDefaultAsync();
+
+        if (existingProfile is null)
+        {
+            companyProfile = new Timesheet.Models.CompanyProfile();
+            isNewProfile = true;
+        }
+        else
+        {
+            companyProfile = existingProfile;
+            isNewProfile = false;
+        }
+    }
+
+    private async Task SaveCompanyProfileAsync()
+    {
+        successMessage = null;
+
+        if (isNewProfile)
+        {
+            companyProfile.CreatedAt = DateTime.UtcNow;
+            companyProfile.UpdatedAt = DateTime.UtcNow;
+            DbContext.CompanyProfiles.Add(companyProfile);
+            isNewProfile = false;
+        }
+        else
+        {
+            companyProfile.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await DbContext.SaveChangesAsync();
+        successMessage = "Company profile saved successfully.";
+    }
+}

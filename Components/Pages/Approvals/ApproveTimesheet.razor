@@ -1,0 +1,229 @@
+@page "/approve-timesheet/{ApprovalToken}"
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Components
+@using Microsoft.EntityFrameworkCore
+@using Timesheet.Data
+@using Timesheet.Models
+@inject AppDbContext DbContext
+
+<PageTitle>Timesheet Approval</PageTitle>
+
+<div class="container py-4" style="max-width: 1100px;">
+    <div class="text-center mb-4">
+        <img src="/images/gm-technologies-logo.png" alt="GM Technologies" class="mb-3" style="max-height: 72px;" onerror="this.style.display='none'" />
+        <h1 class="mb-2">Timesheet Approval</h1>
+        <p class="text-muted mb-0">Please review the submitted timesheet and approve or reject it.</p>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success">@successMessage</div>
+    }
+
+    @if (approvalRequest is null)
+    {
+        <div class="alert alert-warning">Approval request not found.</div>
+    }
+    else
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Client</div>
+                        <div class="fs-5 fw-semibold">@approvalRequest.Client?.Name</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Period</div>
+                        <div class="fs-6 fw-semibold">@approvalRequest.PeriodStart.ToString("yyyy-MM-dd") to @approvalRequest.PeriodEnd.ToString("yyyy-MM-dd")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Total Hours</div>
+                        <div class="fs-5 fw-semibold">@totalHours.ToString("N2")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Total Amount</div>
+                        <div class="fs-5 fw-semibold">@totalAmount.ToString("C")</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                Submitted Timesheet Entries
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Work Date</th>
+                                <th>Project</th>
+                                <th>Workstream</th>
+                                <th>Activity Description</th>
+                                <th class="text-end">Hours Worked</th>
+                                <th class="text-end">Hourly Rate</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (timesheetEntries.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="7" class="text-muted">No submitted billable timesheet entries were found for this approval request.</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var entry in timesheetEntries)
+                                {
+                                    <tr>
+                                        <td>@entry.WorkDate.ToString("yyyy-MM-dd")</td>
+                                        <td>@entry.Project?.Name</td>
+                                        <td>@entry.Workstream</td>
+                                        <td>@entry.ActivityDescription</td>
+                                        <td class="text-end">@entry.HoursWorked.ToString("N2")</td>
+                                        <td class="text-end">@entry.HourlyRate.ToString("C")</td>
+                                        <td class="text-end">@entry.Amount.ToString("C")</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                Approval Response
+            </div>
+            <div class="card-body">
+                @if (approvalRequest.Status == "Pending")
+                {
+                    <div class="mb-3">
+                        <label class="form-label" for="client-comment">Comment</label>
+                        <textarea id="client-comment" class="form-control" rows="4" @bind="clientComment"></textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-success btn-lg" @onclick="ApproveAsync">Approve Timesheet</button>
+                        <button type="button" class="btn btn-outline-danger btn-lg" @onclick="RejectAsync">Reject</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info mb-0">This approval request has already been completed.</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string ApprovalToken { get; set; } = string.Empty;
+
+    private TimesheetApprovalRequest? approvalRequest;
+    private List<TimesheetEntry> timesheetEntries = [];
+    private string clientComment = string.Empty;
+    private string? errorMessage;
+    private string? successMessage;
+    private decimal totalHours;
+    private decimal totalAmount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        approvalRequest = await DbContext.TimesheetApprovalRequests
+            .Include(request => request.Client)
+            .FirstOrDefaultAsync(request => request.ApprovalToken == ApprovalToken);
+
+        if (approvalRequest is null)
+        {
+            return;
+        }
+
+        clientComment = approvalRequest.ClientComment;
+        await LoadTimesheetEntriesAsync();
+    }
+
+    private async Task LoadTimesheetEntriesAsync()
+    {
+        if (approvalRequest is null)
+        {
+            return;
+        }
+
+        timesheetEntries = await DbContext.TimesheetEntries
+            .Include(entry => entry.Project)
+            .ThenInclude(project => project.Client)
+            .Where(entry => entry.TimesheetApprovalRequestId == approvalRequest.Id)
+            .Where(entry => entry.IsBillable)
+            .OrderBy(entry => entry.WorkDate)
+            .ToListAsync();
+
+        totalHours = timesheetEntries.Sum(entry => entry.HoursWorked);
+        totalAmount = timesheetEntries.Sum(entry => entry.Amount);
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (approvalRequest is null)
+        {
+            return;
+        }
+
+        approvalRequest.Status = "Approved";
+        approvalRequest.ApprovedAt = DateTime.UtcNow;
+        approvalRequest.ClientComment = clientComment;
+
+        foreach (var entry in timesheetEntries.Where(entry => entry.Status == "Submitted"))
+        {
+            entry.Status = "Approved";
+        }
+
+        await DbContext.SaveChangesAsync();
+        successMessage = "Thank you. The timesheet has been approved.";
+    }
+
+    private async Task RejectAsync()
+    {
+        if (approvalRequest is null)
+        {
+            return;
+        }
+
+        approvalRequest.Status = "Rejected";
+        approvalRequest.RejectedAt = DateTime.UtcNow;
+        approvalRequest.ClientComment = clientComment;
+
+        foreach (var entry in timesheetEntries.Where(entry => entry.Status == "Submitted"))
+        {
+            entry.Status = "Rejected";
+        }
+
+        await DbContext.SaveChangesAsync();
+        successMessage = "Thank you. The timesheet has been rejected.";
+    }
+}

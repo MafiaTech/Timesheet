@@ -1,0 +1,50 @@
+@page "/login"
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <strong>Login</strong>
+                </div>
+
+                <div class="card-body">
+                    @if (error == "invalid")
+                    {
+                        <div class="alert alert-danger">Invalid email or password.</div>
+                    }
+                    else if (error == "missing")
+                    {
+                        <div class="alert alert-danger">Please enter email and password.</div>
+                    }
+
+                    <form method="post" action="/auth/login">
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            <input name="email" type="email" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input name="password" type="password" class="form-control" />
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input name="rememberMe" type="checkbox" class="form-check-input" />
+                            <label class="form-check-label">Remember Me</label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            Login
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? error { get; set; }
+}

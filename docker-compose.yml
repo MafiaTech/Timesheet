@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: timesheet-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: timesheet_db
+      POSTGRES_USER: sidehustle_admin
+      POSTGRES_PASSWORD: SideHustle@123
+    ports:
+      - "5432:5432"
+    volumes:
+      - sidehustle_postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: timesheet-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gmtech.co.za 
+      PGADMIN_DEFAULT_PASSWORD: Admin@123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  sidehustle_postgres_data:

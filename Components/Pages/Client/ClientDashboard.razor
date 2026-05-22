@@ -1,0 +1,239 @@
+@page "/client-dashboard"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Client")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Timesheet.Data
+@using Timesheet.Models
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject AppDbContext DbContext
+
+<PageTitle>Client Dashboard</PageTitle>
+
+<h1>Client Dashboard</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-warning">@errorMessage</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Total Timesheet Entries</h6>
+                    <div class="fs-3 fw-bold">@totalTimesheetEntries</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Total Hours</h6>
+                    <div class="fs-3 fw-bold">@totalHours.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Approved Hours</h6>
+                    <div class="fs-3 fw-bold">@approvedHours.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Pending Approval Hours</h6>
+                    <div class="fs-3 fw-bold">@pendingApprovalHours.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Total Invoiced Amount</h6>
+                    <div class="fs-3 fw-bold">@totalInvoicedAmount.ToString("C")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Outstanding Invoice Amount</h6>
+                    <div class="fs-3 fw-bold">@outstandingInvoiceAmount.ToString("C")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Paid Invoice Amount</h6>
+                    <div class="fs-3 fw-bold">@paidInvoiceAmount.ToString("C")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            Latest Timesheet Entries
+        </div>
+        <div class="card-body">
+            <table class="table table-striped table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>Work Date</th>
+                        <th>Project</th>
+                        <th>Workstream</th>
+                        <th>Hours</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (latestTimesheetEntries.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="6" class="text-muted">No timesheet entries found.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var entry in latestTimesheetEntries)
+                        {
+                            <tr>
+                                <td>@entry.WorkDate.ToString("yyyy-MM-dd")</td>
+                                <td>@entry.Project?.Name</td>
+                                <td>@entry.Workstream</td>
+                                <td>@entry.HoursWorked.ToString("N2")</td>
+                                <td>@entry.Amount.ToString("C")</td>
+                                <td>@entry.Status</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            Latest Invoices
+        </div>
+        <div class="card-body">
+            <table class="table table-striped table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>Invoice Number</th>
+                        <th>Invoice Date</th>
+                        <th>Period Start</th>
+                        <th>Period End</th>
+                        <th>Total Hours</th>
+                        <th>Total Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (latestInvoices.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="7" class="text-muted">No invoices found.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var invoice in latestInvoices)
+                        {
+                            <tr>
+                                <td>@invoice.InvoiceNumber</td>
+                                <td>@invoice.InvoiceDate.ToString("yyyy-MM-dd")</td>
+                                <td>@invoice.PeriodStart.ToString("yyyy-MM-dd")</td>
+                                <td>@invoice.PeriodEnd.ToString("yyyy-MM-dd")</td>
+                                <td>@invoice.TotalHours.ToString("N2")</td>
+                                <td>@invoice.TotalAmount.ToString("C")</td>
+                                <td>@invoice.Status</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private int totalTimesheetEntries;
+    private decimal totalHours;
+    private decimal approvedHours;
+    private decimal pendingApprovalHours;
+    private decimal totalInvoicedAmount;
+    private decimal outstandingInvoiceAmount;
+    private decimal paidInvoiceAmount;
+    private List<TimesheetEntry> latestTimesheetEntries = [];
+    private List<Invoice> latestInvoices = [];
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authenticationState.User);
+
+        if (user?.ClientId is null)
+        {
+            errorMessage = "Your user account is not linked to a client profile.";
+            return;
+        }
+
+        var clientId = user.ClientId.Value;
+
+        var timesheetEntries = await DbContext.TimesheetEntries
+            .AsNoTracking()
+            .Include(entry => entry.Project)
+            .ThenInclude(project => project.Client)
+            .Where(entry => entry.Project.ClientId == clientId)
+            .OrderByDescending(entry => entry.WorkDate)
+            .ThenByDescending(entry => entry.Id)
+            .ToListAsync();
+
+        var invoices = await DbContext.Invoices
+            .AsNoTracking()
+            .Include(invoice => invoice.Client)
+            .Where(invoice => invoice.ClientId == clientId)
+            .OrderByDescending(invoice => invoice.InvoiceDate)
+            .ThenByDescending(invoice => invoice.Id)
+            .ToListAsync();
+
+        totalTimesheetEntries = timesheetEntries.Count;
+        totalHours = timesheetEntries.Sum(entry => entry.HoursWorked);
+        approvedHours = timesheetEntries
+            .Where(entry => entry.Status == "Approved")
+            .Sum(entry => entry.HoursWorked);
+        pendingApprovalHours = timesheetEntries
+            .Where(entry => entry.Status == "Submitted")
+            .Sum(entry => entry.HoursWorked);
+        totalInvoicedAmount = invoices.Sum(invoice => invoice.TotalAmount);
+        outstandingInvoiceAmount = invoices
+            .Where(invoice => invoice.Status != "Paid")
+            .Sum(invoice => invoice.TotalAmount);
+        paidInvoiceAmount = invoices
+            .Where(invoice => invoice.Status == "Paid")
+            .Sum(invoice => invoice.TotalAmount);
+
+        latestTimesheetEntries = timesheetEntries.Take(5).ToList();
+        latestInvoices = invoices.Take(5).ToList();
+    }
+}

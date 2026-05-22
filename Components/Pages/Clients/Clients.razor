@@ -1,0 +1,284 @@
+
+@page "/clients"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using Timesheet.Data
+@using Timesheet.Models
+@using Microsoft.AspNetCore.Authorization
+
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Clients</PageTitle>
+
+<h1>Clients</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <EditForm Model="newClient" OnValidSubmit="SaveClientAsync">
+            <DataAnnotationsValidator />
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="client-name">Name</label>
+                    <InputText id="client-name" class="form-control" @bind-Value="newClient.Name" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="contact-person">Contact Person</label>
+                    <InputText id="contact-person" class="form-control" @bind-Value="newClient.ContactPerson" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="client-email">Email</label>
+                    <InputText id="client-email" class="form-control" @bind-Value="newClient.Email" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="client-phone">Phone</label>
+                    <InputText id="client-phone" class="form-control" @bind-Value="newClient.Phone" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="default-hourly-rate">Default Hourly Rate</label>
+                    <InputNumber id="default-hourly-rate" class="form-control" @bind-Value="newClient.DefaultHourlyRate" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Active</label>
+                    <div class="form-check mt-2">
+                        <InputCheckbox id="client-active" class="form-check-input" @bind-Value="newClient.IsActive" />
+                        <label class="form-check-label" for="client-active">Yes</label>
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">@(isEditMode ? "Update Client" : "Save Client")</button>
+                    @if (isEditMode)
+                    {
+                        <button type="button" class="btn btn-secondary ms-2" @onclick="CancelEdit">Cancel Edit</button>
+                    }
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@if (clients.Count == 0)
+{
+    <p>No clients have been added yet.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Contact Person</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Default Hourly Rate</th>
+                <th>Active</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var client in clients)
+            {
+                var hasProjects = clientProjectCounts.TryGetValue(client.Id, out var projectCount) && projectCount > 0;
+
+                <tr>
+                    <td>@client.Name</td>
+                    <td>@client.ContactPerson</td>
+                    <td>@client.Email</td>
+                    <td>@client.Phone</td>
+                    <td>@client.DefaultHourlyRate.ToString("C")</td>
+                    <td>@(client.IsActive ? "Yes" : "No")</td>
+                    <td>
+                        <div class="d-flex gap-2 align-items-center flex-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => EditClientAsync(client.Id)">Edit</button>
+                            @if (hasProjects)
+                            {
+                                <span class="badge bg-secondary">Has Projects</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteClientAsync(client.Id)">Delete</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private Client newClient = new();
+    private List<Client> clients = [];
+    private Dictionary<int, int> clientProjectCounts = [];
+    private bool isEditMode = false;
+    private int? editingClientId = null;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClientsAsync();
+    }
+
+    private async Task SaveClientAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        if (isEditMode)
+        {
+            if (editingClientId is null)
+            {
+                errorMessage = "No client is selected for editing.";
+                return;
+            }
+
+            var existingClient = await DbContext.Clients
+                .FirstOrDefaultAsync(client => client.Id == editingClientId.Value);
+
+            if (existingClient is null)
+            {
+                errorMessage = "Client not found.";
+                return;
+            }
+
+            existingClient.Name = newClient.Name;
+            existingClient.ContactPerson = newClient.ContactPerson;
+            existingClient.Email = newClient.Email;
+            existingClient.Phone = newClient.Phone;
+            existingClient.DefaultHourlyRate = newClient.DefaultHourlyRate;
+            existingClient.IsActive = newClient.IsActive;
+
+            await DbContext.SaveChangesAsync();
+
+            successMessage = "Client updated successfully.";
+            ResetForm();
+            await LoadClientsAsync();
+            return;
+        }
+
+        DbContext.Clients.Add(newClient);
+        await DbContext.SaveChangesAsync();
+
+        ResetForm();
+        await LoadClientsAsync();
+    }
+
+    private async Task LoadClientsAsync()
+    {
+        clients = await DbContext.Clients
+            .OrderBy(client => client.Name)
+            .ToListAsync();
+
+        clientProjectCounts = await DbContext.Projects
+            .GroupBy(project => project.ClientId)
+            .Select(group => new { ClientId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(group => group.ClientId, group => group.Count);
+    }
+
+    private async Task EditClientAsync(int clientId)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var client = await DbContext.Clients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(client => client.Id == clientId);
+
+        if (client is null)
+        {
+            errorMessage = "Client not found.";
+            return;
+        }
+
+        newClient = new Client
+        {
+            Id = client.Id,
+            Name = client.Name,
+            ContactPerson = client.ContactPerson,
+            Email = client.Email,
+            Phone = client.Phone,
+            DefaultHourlyRate = client.DefaultHourlyRate,
+            IsActive = client.IsActive,
+            CreatedAt = client.CreatedAt
+        };
+
+        isEditMode = true;
+        editingClientId = client.Id;
+    }
+
+    private async Task DeleteClientAsync(int clientId)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var hasProjects = await DbContext.Projects
+            .AnyAsync(project => project.ClientId == clientId);
+
+        if (hasProjects)
+        {
+            errorMessage = "Client cannot be deleted because it has projects.";
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this client?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var client = await DbContext.Clients
+            .FirstOrDefaultAsync(client => client.Id == clientId);
+
+        if (client is null)
+        {
+            errorMessage = "Client not found.";
+            return;
+        }
+
+        DbContext.Clients.Remove(client);
+        await DbContext.SaveChangesAsync();
+
+        if (editingClientId == clientId)
+        {
+            ResetForm();
+        }
+
+        await LoadClientsAsync();
+    }
+
+    private void CancelEdit()
+    {
+        errorMessage = null;
+        successMessage = null;
+        ResetForm();
+    }
+
+    private void ResetForm()
+    {
+        newClient = new Client();
+        isEditMode = false;
+        editingClientId = null;
+    }
+}

@@ -1,0 +1,92 @@
+@page "/client-company-profile"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Client")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Timesheet.Data
+@using Timesheet.Models
+
+@inject AppDbContext DbContext
+
+<PageTitle>Company Profile</PageTitle>
+
+<h1>Company Profile</h1>
+
+@if (companyProfile is null)
+{
+    <div class="alert alert-warning">Company profile has not been configured.</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            Company Details
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Company Name</label>
+                    <div>@companyProfile.CompanyName</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Contact Person</label>
+                    <div>@companyProfile.ContactPerson</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Email</label>
+                    <div>@companyProfile.Email</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Phone</label>
+                    <div>@companyProfile.Phone</div>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-bold">Address</label>
+                    <div>@companyProfile.Address</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">VAT Number</label>
+                    <div>@companyProfile.VatNumber</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Bank Name</label>
+                    <div>@companyProfile.BankName</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Account Number</label>
+                    <div>@companyProfile.AccountNumber</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Branch Code</label>
+                    <div>@companyProfile.BranchCode</div>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-bold">Invoice Footer Message</label>
+                    <div>@companyProfile.InvoiceFooterMessage</div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private CompanyProfile? companyProfile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        companyProfile = await DbContext.CompanyProfiles
+            .AsNoTracking()
+            .OrderBy(profile => profile.Id)
+            .FirstOrDefaultAsync();
+    }
+}

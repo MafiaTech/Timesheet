@@ -1,0 +1,320 @@
+@page "/projects"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using Timesheet.Data
+@using Timesheet.Models
+@using Microsoft.AspNetCore.Authorization
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Projects</PageTitle>
+
+<h1>Projects</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <EditForm Model="newProject" OnValidSubmit="SaveProjectAsync">
+            <DataAnnotationsValidator />
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="project-client">Client</label>
+                    <InputSelect id="project-client" class="form-select" @bind-Value="newProject.ClientId">
+                        <option value="0">Select a client</option>
+                        @foreach (var client in clients)
+                        {
+                            <option value="@client.Id">@client.Name</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="project-name">Name</label>
+                    <InputText id="project-name" class="form-control" @bind-Value="newProject.Name" />
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label" for="project-description">Description</label>
+                    <InputTextArea id="project-description" class="form-control" @bind-Value="newProject.Description" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="project-start-date">Start Date</label>
+                    <InputDate id="project-start-date" class="form-control" @bind-Value="newProject.StartDate" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="project-end-date">End Date</label>
+                    <InputDate id="project-end-date" class="form-control" @bind-Value="newProject.EndDate" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="project-hourly-rate">Hourly Rate</label>
+                    <InputNumber id="project-hourly-rate" class="form-control" @bind-Value="newProject.HourlyRate" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Active</label>
+                    <div class="form-check mt-2">
+                        <InputCheckbox id="project-active" class="form-check-input" @bind-Value="newProject.IsActive" />
+                        <label class="form-check-label" for="project-active">Yes</label>
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary" disabled="@(clients.Count == 0)">@(isEditMode ? "Update Project" : "Save Project")</button>
+                    @if (isEditMode)
+                    {
+                        <button type="button" class="btn btn-secondary ms-2" @onclick="CancelEdit">Cancel Edit</button>
+                    }
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@if (projects.Count == 0)
+{
+    <p>No projects have been added yet.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Project Name</th>
+                <th>Client Name</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Hourly Rate</th>
+                <th>Active Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var project in projects)
+            {
+                var hasTimesheets = projectTimesheetCounts.TryGetValue(project.Id, out var timesheetCount) && timesheetCount > 0;
+
+                <tr>
+                    <td>@project.Name</td>
+                    <td>@project.Client.Name</td>
+                    <td>@project.StartDate.ToShortDateString()</td>
+                    <td>@(project.EndDate?.ToShortDateString() ?? string.Empty)</td>
+                    <td>@project.HourlyRate.ToString("C")</td>
+                    <td>@(project.IsActive ? "Active" : "Inactive")</td>
+                    <td>
+                        <div class="d-flex gap-2 align-items-center flex-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => EditProjectAsync(project.Id)">Edit</button>
+                            @if (hasTimesheets)
+                            {
+                                <span class="badge bg-secondary">Has Timesheets</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteProjectAsync(project.Id)">Delete</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private Project newProject = new() { StartDate = DateTime.Today };
+    private List<Client> clients = [];
+    private List<Project> projects = [];
+    private Dictionary<int, int> projectTimesheetCounts = [];
+    private bool isEditMode = false;
+    private int? editingProjectId = null;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClientsAsync();
+        await LoadProjectsAsync();
+        ResetNewProject();
+    }
+
+    private async Task SaveProjectAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var startDate = DateTime.SpecifyKind(newProject.StartDate, DateTimeKind.Utc);
+        var endDate = newProject.EndDate.HasValue
+            ? DateTime.SpecifyKind(newProject.EndDate.Value, DateTimeKind.Utc)
+            : (DateTime?)null;
+
+        if (isEditMode)
+        {
+            if (editingProjectId is null)
+            {
+                errorMessage = "No project is selected for editing.";
+                return;
+            }
+
+            var existingProject = await DbContext.Projects
+                .FirstOrDefaultAsync(project => project.Id == editingProjectId.Value);
+
+            if (existingProject is null)
+            {
+                errorMessage = "Project not found.";
+                return;
+            }
+
+            existingProject.ClientId = newProject.ClientId;
+            existingProject.Name = newProject.Name;
+            existingProject.Description = newProject.Description;
+            existingProject.StartDate = startDate;
+            existingProject.EndDate = endDate;
+            existingProject.HourlyRate = newProject.HourlyRate;
+            existingProject.IsActive = newProject.IsActive;
+
+            await DbContext.SaveChangesAsync();
+
+            successMessage = "Project updated successfully.";
+            await LoadProjectsAsync();
+            ResetNewProject();
+            return;
+        }
+
+        newProject.CreatedAt = DateTime.UtcNow;
+        newProject.StartDate = startDate;
+        newProject.EndDate = endDate;
+
+        DbContext.Projects.Add(newProject);
+        await DbContext.SaveChangesAsync();
+
+        await LoadProjectsAsync();
+        ResetNewProject();
+    }
+
+    private async Task LoadClientsAsync()
+    {
+        clients = await DbContext.Clients
+            .OrderBy(client => client.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        projects = await DbContext.Projects
+            .Include(project => project.Client)
+            .OrderBy(project => project.Name)
+            .ToListAsync();
+
+        projectTimesheetCounts = await DbContext.TimesheetEntries
+            .GroupBy(entry => entry.ProjectId)
+            .Select(group => new { ProjectId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(group => group.ProjectId, group => group.Count);
+    }
+
+    private async Task EditProjectAsync(int projectId)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var project = await DbContext.Projects
+            .AsNoTracking()
+            .FirstOrDefaultAsync(project => project.Id == projectId);
+
+        if (project is null)
+        {
+            errorMessage = "Project not found.";
+            return;
+        }
+
+        newProject = new Project
+        {
+            Id = project.Id,
+            ClientId = project.ClientId,
+            Name = project.Name,
+            Description = project.Description,
+            StartDate = project.StartDate,
+            EndDate = project.EndDate,
+            HourlyRate = project.HourlyRate,
+            IsActive = project.IsActive,
+            CreatedAt = project.CreatedAt
+        };
+
+        isEditMode = true;
+        editingProjectId = project.Id;
+    }
+
+    private async Task DeleteProjectAsync(int projectId)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var hasTimesheets = await DbContext.TimesheetEntries
+            .AnyAsync(entry => entry.ProjectId == projectId);
+
+        if (hasTimesheets)
+        {
+            errorMessage = "Project cannot be deleted because it has timesheet entries.";
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this project?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var project = await DbContext.Projects
+            .FirstOrDefaultAsync(project => project.Id == projectId);
+
+        if (project is null)
+        {
+            errorMessage = "Project not found.";
+            return;
+        }
+
+        DbContext.Projects.Remove(project);
+        await DbContext.SaveChangesAsync();
+
+        if (editingProjectId == projectId)
+        {
+            ResetNewProject();
+        }
+
+        await LoadProjectsAsync();
+    }
+
+    private void CancelEdit()
+    {
+        errorMessage = null;
+        successMessage = null;
+        ResetNewProject();
+    }
+
+    private void ResetNewProject()
+    {
+        newProject = new Project
+        {
+            ClientId = clients.FirstOrDefault()?.Id ?? 0,
+            StartDate = DateTime.Today
+        };
+
+        isEditMode = false;
+        editingProjectId = null;
+    }
+}

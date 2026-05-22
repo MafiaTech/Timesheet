@@ -1,0 +1,162 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+
+@using Microsoft.EntityFrameworkCore
+@using Timesheet.Data
+@using Timesheet.Models
+@using Microsoft.AspNetCore.Authorization
+
+@inject AppDbContext DbContext
+
+<h3>Dashboard</h3>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Total Clients</h6>
+                <div class="fs-3 fw-bold">@totalClients</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Total Projects</h6>
+                <div class="fs-3 fw-bold">@totalProjects</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Total Timesheet Entries</h6>
+                <div class="fs-3 fw-bold">@totalTimesheetEntries</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Total Hours Worked</h6>
+                <div class="fs-3 fw-bold">@totalHoursWorked.ToString("N2")</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Billable Hours</h6>
+                <div class="fs-3 fw-bold">@billableHours.ToString("N2")</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Non-Billable Hours</h6>
+                <div class="fs-3 fw-bold">@nonBillableHours.ToString("N2")</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Total Billable Amount</h6>
+                <div class="fs-3 fw-bold">@totalBillableAmount.ToString("C")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        Recent Timesheet Entries
+    </div>
+    <div class="card-body">
+        <table class="table table-striped table-bordered mb-0">
+            <thead>
+                <tr>
+                    <th>Work Date</th>
+                    <th>Client</th>
+                    <th>Project</th>
+                    <th>Workstream</th>
+                    <th>Hours</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (recentTimesheetEntries.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7" class="text-muted">No timesheet entries found.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var entry in recentTimesheetEntries)
+                    {
+                        <tr>
+                            <td>@entry.WorkDate.ToString("yyyy-MM-dd")</td>
+                            <td>@entry.Project?.Client?.Name</td>
+                            <td>@entry.Project?.Name</td>
+                            <td>@entry.Workstream</td>
+                            <td>@entry.HoursWorked.ToString("N2")</td>
+                            <td>@entry.Amount.ToString("C")</td>
+                            <td>@entry.Status</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private int totalClients;
+    private int totalProjects;
+    private int totalTimesheetEntries;
+    private decimal totalHoursWorked;
+    private decimal billableHours;
+    private decimal nonBillableHours;
+    private decimal totalBillableAmount;
+    private List<TimesheetEntry> recentTimesheetEntries = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        totalClients = await DbContext.Clients.CountAsync();
+        totalProjects = await DbContext.Projects.CountAsync();
+        totalTimesheetEntries = await DbContext.TimesheetEntries.CountAsync();
+
+        totalHoursWorked = await DbContext.TimesheetEntries
+            .SumAsync(entry => entry.HoursWorked);
+
+        billableHours = await DbContext.TimesheetEntries
+            .Where(entry => entry.IsBillable)
+            .SumAsync(entry => entry.HoursWorked);
+
+        nonBillableHours = await DbContext.TimesheetEntries
+            .Where(entry => !entry.IsBillable)
+            .SumAsync(entry => entry.HoursWorked);
+
+        totalBillableAmount = await DbContext.TimesheetEntries
+            .Where(entry => entry.IsBillable)
+            .SumAsync(entry => entry.Amount);
+
+        recentTimesheetEntries = await DbContext.TimesheetEntries
+            .Include(entry => entry.Project)
+            .ThenInclude(project => project.Client)
+            .OrderByDescending(entry => entry.WorkDate)
+            .ThenByDescending(entry => entry.Id)
+            .Take(5)
+            .ToListAsync();
+    }
+}
